@@ -18,11 +18,37 @@ KERNEL_DIR="${KERNEL_DIR:-${ROOT_DIR}/android_kernel_xiaomi_piano}"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/out}"
 MODULES_STAGING_DIR="${OUT_DIR}/modules_staging"
 DEFCONFIG="piano_defconfig"
+# KSU=1 builds the root variant: KernelSU-Next with SUSFS.
+if [ "${KSU:-0}" = 1 ]; then
+    CONFIG_FRAGMENTS="piano_ksu.config"
+    VARIANT="ksu"
+    PREBUILT_BRANCH="seventeen-ksu"
+else
+    CONFIG_FRAGMENTS=""
+    VARIANT="plain"
+    PREBUILT_BRANCH="seventeen"
+fi
 
 ROM_DIR="${ROM_DIR:?set ROM_DIR to a ROM checkout}"
 PREBUILT_KERNEL_DIR="${PREBUILT_KERNEL_DIR:-${ROM_DIR}/device/xiaomi/piano-kernel}"
 mkdir -p "${PREBUILT_KERNEL_DIR}"
 
+# Release prebuilts have separate branches for plain and rooted images. Catch
+# an incorrect checkout before the final sync deletes/replaces its contents.
+if [ -e "${PREBUILT_KERNEL_DIR}/.git" ]; then
+    CURRENT_BRANCH="$(git -C "${PREBUILT_KERNEL_DIR}" symbolic-ref --quiet --short HEAD || true)"
+    if [ "${CURRENT_BRANCH}" != "${PREBUILT_BRANCH}" ]; then
+        echo "[error] ${VARIANT} requires prebuilt branch ${PREBUILT_BRANCH}, found ${CURRENT_BRANCH:-detached HEAD}" >&2
+        exit 1
+    fi
+fi
+
+# Use the source commit's date rather than the wall clock so rebuilds of the
+# same revision carry the same version and embedded header timestamps.
+export LC_ALL=C
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "${KERNEL_DIR}" log -1 --format=%ct)}"
+export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(date -u -d "@${SOURCE_DATE_EPOCH}" '+%a %b %d %H:%M:%S UTC %Y')}"
+export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
 export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-alxp}"
 export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-piano}"
 
@@ -86,7 +112,7 @@ echo "========================================"
 cd "${KERNEL_DIR}"
 
 echo "   [build] Generating config..."
-make -j"$(nproc)" "${TOOL_ARGS[@]}" "${DEFCONFIG}"
+make -j"$(nproc)" "${TOOL_ARGS[@]}" "${DEFCONFIG}" ${CONFIG_FRAGMENTS}
 
 echo "   [build] Compiling kernel, modules and devicetrees..."
 make -j"$(nproc)" "${TOOL_ARGS[@]}" Image modules dtbs
@@ -164,8 +190,8 @@ stage_modules() {
     local mod
     for mod in "$@"; do
         if [ -z "${MODULE_PATH[${mod}]}" ]; then
-            echo "   [WARN] ${mod} is listed for ${part} but was not built"
-            continue
+            echo "   [error] ${mod} is listed for ${part} but was not built" >&2
+            return 1
         fi
         cp "${MODULE_PATH[${mod}]}" "${dest}/"
         "${STRIP_BIN}" --strip-debug "${dest}/${mod}"
@@ -177,7 +203,7 @@ stage_modules() {
 # vendor_boot carries the recovery modules as well, since piano boots
 # recovery with the vendor_boot ramdisk
 stage_modules vendor_boot $(module_closure "${VB_LIST}" "${VB_RECOVERY_LIST}")
-stage_modules vendor_dlkm $(cat "${VDLKM_LIST}")
+stage_modules vendor_dlkm $(awk 'NF && !seen[$0]++' "${VDLKM_LIST}")
 stage_modules system_dlkm $(cat "${SDLKM_LIST}")
 
 #####
@@ -199,10 +225,10 @@ for part in vendor_boot vendor_dlkm system_dlkm; do
     depmod -b "${DLKM_STAGING}/${part}" "${KERNEL_VER}"
 done
 
-cp "${VB_LIST}" "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load"
-cp "${VB_RECOVERY_LIST}" "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load.recovery"
+awk 'NF && !seen[$0]++' "${VB_LIST}" > "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load"
+awk 'NF && !seen[$0]++' "${VB_RECOVERY_LIST}" > "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load.recovery"
 cp "${BLOCKLIST}" "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.blocklist"
-cp "${VDLKM_LIST}" "${DLKM_STAGING}/vendor_dlkm/lib/modules/${KERNEL_VER}/modules.load"
+awk 'NF && !seen[$0]++' "${VDLKM_LIST}" > "${DLKM_STAGING}/vendor_dlkm/lib/modules/${KERNEL_VER}/modules.load"
 cp "${BLOCKLIST}" "${DLKM_STAGING}/vendor_dlkm/lib/modules/${KERNEL_VER}/modules.blocklist"
 cp "${SDLKM_LIST}" "${DLKM_STAGING}/system_dlkm/lib/modules/${KERNEL_VER}/modules.load"
 
@@ -225,7 +251,8 @@ cp "${VB_SRC}"/*.ko "${VB_SRC}/modules.load" "${VB_SRC}/modules.load.recovery" \
     "${VB_SRC}/modules.blocklist" "${VB_SRC}/modules.softdep" "${VB_SRC}/modules.alias" \
     "${VB_RD}/lib/modules/"
 sed -E 's#([^ :]+\.ko)#/lib/modules/\1#g' "${VB_SRC}/modules.dep" > "${VB_RD}/lib/modules/modules.dep"
-( cd "${VB_RD}" && find . -mindepth 1 | sed 's|^\./||' | sort | cpio -H newc -o -R 0:0 --quiet | lz4 -l -12 --favor-decSpeed > "${OUT_DIR}/dlkm.cpio" )
+find "${VB_RD}" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+( cd "${VB_RD}" && find . -mindepth 1 | sed 's|^\./||' | sort | cpio --reproducible -H newc -o -R 0:0 --quiet | lz4 -l -12 --favor-decSpeed > "${OUT_DIR}/dlkm.cpio" )
 
 #####
 #####
@@ -357,10 +384,10 @@ if [ "${COMMIT:-0}" = 1 ]; then
     git -C "${PREBUILT_KERNEL_DIR}" add -A .
     git -C "${PREBUILT_KERNEL_DIR}" commit -q -m "piano-kernel: Update prebuilts $(date -u +%Y%m%d%H%M)
 
-- Kernel: ${KERNEL_VER}
+- Kernel: ${KERNEL_VER} (${VARIANT})
 - Kernel HEAD: ${KERNEL_HEAD}"
 fi
 
 echo "========================================"
-echo "Done! ${KERNEL_VER} from ${KERNEL_HEAD}"
+echo "Done! ${KERNEL_VER} (${VARIANT}) from ${KERNEL_HEAD}"
 echo "========================================"
