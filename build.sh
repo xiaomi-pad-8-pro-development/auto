@@ -117,7 +117,8 @@ echo "   [build] Generating config..."
 make -j"$(nproc)" "${TOOL_ARGS[@]}" "${DEFCONFIG}" ${CONFIG_FRAGMENTS}
 
 echo "   [build] Compiling kernel, modules and devicetrees..."
-make -j"$(nproc)" "${TOOL_ARGS[@]}" Image modules dtbs
+# Board overlays are bases for techpack overlays too, so export their labels.
+make -j"$(nproc)" "${TOOL_ARGS[@]}" DTC_FLAGS=-@ Image modules dtbs
 
 KERNEL_VER=$(cat "${OUT_DIR}/include/config/kernel.release")
 echo "   [info] Kernel Version: ${KERNEL_VER}"
