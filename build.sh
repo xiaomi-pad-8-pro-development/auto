@@ -76,6 +76,17 @@ VDLKM_LIST="${BUILD_CONFIG_DIR}/vendor_dlkm.modules.load"
 SDLKM_LIST="${BUILD_CONFIG_DIR}/system_dlkm.modules.load"
 BLOCKLIST="${BUILD_CONFIG_DIR}/modules.blocklist"
 
+# Normalize all four load lists before compiling. Keep the source lists
+# untouched, and use exactly these ordered lists for staging and packaging.
+PREFLIGHT_TOOL="$(cd "$(dirname "$0")" && pwd)/module_preflight.py"
+PREFLIGHT_DIR="${OUT_DIR}/module_preflight"
+echo "   [preflight] Checking and normalizing kernel module load lists..."
+python3 "${PREFLIGHT_TOOL}" load-lists "${BUILD_CONFIG_DIR}" "${PREFLIGHT_DIR}"
+VB_LIST="${PREFLIGHT_DIR}/vendor_boot.modules.load"
+VB_RECOVERY_LIST="${PREFLIGHT_DIR}/vendor_boot.modules.load.recovery"
+VDLKM_LIST="${PREFLIGHT_DIR}/vendor_dlkm.modules.load"
+SDLKM_LIST="${PREFLIGHT_DIR}/system_dlkm.modules.load"
+
 # Devicetrees, as listed for piano in platform_map.bzl.
 DTB_DIR="${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom"
 TECHPACK_DTB_DIR="${OUT_DIR}/arch/arm64/boot/dts/techpack"
@@ -206,7 +217,7 @@ stage_modules() {
 # vendor_boot carries the recovery modules as well, since piano boots
 # recovery with the vendor_boot ramdisk
 stage_modules vendor_boot $(module_closure "${VB_LIST}" "${VB_RECOVERY_LIST}")
-stage_modules vendor_dlkm $(awk 'NF && !seen[$0]++' "${VDLKM_LIST}")
+stage_modules vendor_dlkm $(cat "${VDLKM_LIST}")
 stage_modules system_dlkm $(cat "${SDLKM_LIST}")
 
 #####
@@ -214,6 +225,10 @@ stage_modules system_dlkm $(cat "${SDLKM_LIST}")
 # generate module metadata
 #####
 #####
+
+# depmod can emit bare MODULE_SOFTDEP("ecb") as "softdep cifs ecb".
+# libmodprobe requires "softdep cifs pre: ecb". Validate every section and
+# keep explicit pre/post ordering, failing before prebuilts are replaced.
 
 echo "========================================"
 echo "Generating Metadata"
@@ -226,12 +241,13 @@ for part in vendor_boot vendor_dlkm system_dlkm; do
     cp "${SRC_METADATA}/modules.builtin" "${SRC_METADATA}/modules.builtin.modinfo" \
         "${SRC_METADATA}/modules.order" "${TARGET_DIR}/"
     depmod -b "${DLKM_STAGING}/${part}" "${KERNEL_VER}"
+    python3 "${PREFLIGHT_TOOL}" softdeps "${TARGET_DIR}/modules.softdep"
 done
 
-awk 'NF && !seen[$0]++' "${VB_LIST}" > "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load"
-awk 'NF && !seen[$0]++' "${VB_RECOVERY_LIST}" > "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load.recovery"
+cp "${VB_LIST}" "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load"
+cp "${VB_RECOVERY_LIST}" "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.load.recovery"
 cp "${BLOCKLIST}" "${DLKM_STAGING}/vendor_boot/lib/modules/${KERNEL_VER}/modules.blocklist"
-awk 'NF && !seen[$0]++' "${VDLKM_LIST}" > "${DLKM_STAGING}/vendor_dlkm/lib/modules/${KERNEL_VER}/modules.load"
+cp "${VDLKM_LIST}" "${DLKM_STAGING}/vendor_dlkm/lib/modules/${KERNEL_VER}/modules.load"
 cp "${BLOCKLIST}" "${DLKM_STAGING}/vendor_dlkm/lib/modules/${KERNEL_VER}/modules.blocklist"
 cp "${SDLKM_LIST}" "${DLKM_STAGING}/system_dlkm/lib/modules/${KERNEL_VER}/modules.load"
 

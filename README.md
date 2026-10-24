@@ -17,6 +17,15 @@ Modules are stripped and signed with the key the kernel was built with, and
 each partition gets only the modules on its list in `build_config/piano`.
 Repeated entries are removed while retaining the original load order, and
 the build stops if a required module was not compiled.
+The `module_preflight.py` step checks all four module lists before compilation,
+including recovery, and writes deduplicated copies to
+`OUT_DIR/module_preflight/`. It reports source duplicates without changing
+the kernel source lists. After `depmod`, it qualifies unqualified soft
+dependencies such as `softdep cifs ecb` as `softdep cifs pre: ecb` and rejects
+malformed entries before replacing any release prebuilts.
+
+To validate list/metadata handling without building a kernel, run
+`python3 -m unittest discover -s tests -v` from this repository.
 
 ## Usage
 
