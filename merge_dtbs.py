@@ -259,6 +259,10 @@ class DeviceTree(DeviceTreeInfo):
 
 	def get_prop(self, node, property, prop_type='i', check_output=True):
 		r = subprocess.run(["fdtget", "-t", prop_type, self.filename, node, property],check=check_output, stdout=subprocess.PIPE,stderr=None if check_output else subprocess.DEVNULL)
+		# fdtget returns 1 for an absent property; execution failures must
+		# never turn every identifier into None and silently skip overlays.
+		if r.returncode not in (0, 1):
+			raise subprocess.CalledProcessError(r.returncode, r.args)
 		if r.returncode != 0:
 			return None
 		out = r.stdout.decode("utf-8").strip()

@@ -98,6 +98,8 @@ if [ ! -x "${DTC_DIR}/fdtoverlaymerge" ]; then
     env -u OUT_DIR make -C "${DTC_DIR}" -j"$(nproc)" NO_PYTHON=1 NO_YAML=1 dtc fdtget fdtoverlay fdtoverlaymerge >/dev/null
 fi
 export PATH="${DTC_DIR}:${PATH}"
+# The locally built dtc tools link against libfdt in their build directory.
+export LD_LIBRARY_PATH="${DTC_DIR}/libfdt${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 #####
 #####
