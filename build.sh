@@ -126,6 +126,14 @@ cd "${KERNEL_DIR}"
 
 echo "   [build] Generating config..."
 make -j"$(nproc)" "${TOOL_ARGS[@]}" "${DEFCONFIG}" ${CONFIG_FRAGMENTS}
+# MODULE_SIG_KEY points at a PEM holding both the key and its certificate.
+# Signing every build with the same key lets a new kernel load the modules
+# already on the device, instead of a key generated for each OUT_DIR.
+if [ -n "${MODULE_SIG_KEY:-}" ]; then
+    "${KERNEL_DIR}/scripts/config" --file "${OUT_DIR}/.config" \
+        --set-str MODULE_SIG_KEY "${MODULE_SIG_KEY}"
+    make -j"$(nproc)" "${TOOL_ARGS[@]}" olddefconfig
+fi
 
 echo "   [build] Compiling kernel, modules and devicetrees..."
 # Board overlays are bases for techpack overlays too, so export their labels.
@@ -157,8 +165,8 @@ done
 
 SIGN_FILE="${OUT_DIR}/scripts/sign-file"
 SIGN_HASH=$(sed -n 's/^CONFIG_MODULE_SIG_HASH="\(.*\)"$/\1/p' "${OUT_DIR}/.config")
-SIGN_KEY="${OUT_DIR}/certs/signing_key.pem"
-SIGN_CERT="${OUT_DIR}/certs/signing_key.x509"
+SIGN_KEY="${MODULE_SIG_KEY:-${OUT_DIR}/certs/signing_key.pem}"
+SIGN_CERT="${MODULE_SIG_KEY:-${OUT_DIR}/certs/signing_key.x509}"
 
 # every module the build produced, by file name
 declare -A MODULE_PATH
