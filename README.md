@@ -16,7 +16,11 @@ and turns it into the prebuilts in
 Modules are stripped and signed with the key the kernel was built with, and
 each partition gets only the modules on its list in `build_config/piano`.
 Repeated entries are removed while retaining the original load order, and
-the build stops if a required module was not compiled.
+the build stops if a required module was not compiled. `module_preflight.py`
+checks the load lists before the build and rewrites the unqualified
+`softdep` lines depmod writes (`softdep cifs ecb`) into the `pre:` form
+Android's module loader accepts; `python3 -m unittest discover -s tests`
+runs its checks.
 
 ## Usage
 
