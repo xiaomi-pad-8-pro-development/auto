@@ -22,11 +22,11 @@ DEFCONFIG="piano_defconfig"
 if [ "${KSU:-0}" = 1 ]; then
     CONFIG_FRAGMENTS="piano_ksu.config"
     VARIANT="ksu"
-    PREBUILT_BRANCH="seventeen-ksu"
+    PREBUILT_BRANCH="6.6-ksu"
 else
     CONFIG_FRAGMENTS=""
     VARIANT="plain"
-    PREBUILT_BRANCH="seventeen"
+    PREBUILT_BRANCH="6.6"
 fi
 
 ROM_DIR="${ROM_DIR:?set ROM_DIR to a ROM checkout}"

@@ -3,8 +3,8 @@
 Builds the [alxp kernel](https://github.com/xiaomi-pad-8-pro-development/android_kernel_xiaomi_piano) into the [prebuilts](https://github.com/xiaomi-pad-8-pro-development/android_device_xiaomi_piano-kernel).
 
 ```
-ROM_DIR=~/android/<rom> ./build.sh          # plain, branch seventeen
-ROM_DIR=~/android/<rom> KSU=1 ./build.sh    # KernelSU-Next + SUSFS, branch seventeen-ksu
+ROM_DIR=~/android/<rom> ./build.sh          # plain, branch 6.6
+ROM_DIR=~/android/<rom> KSU=1 ./build.sh    # KernelSU-Next + SUSFS, branch 6.6-ksu
 ```
 
 | Output | What |

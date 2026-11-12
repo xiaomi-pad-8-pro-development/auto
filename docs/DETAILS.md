@@ -35,7 +35,7 @@ the prebuilt repository.
 The kernel builds without root by default, as official ROM builds need.
 `KSU=1` builds the root variant with KernelSU-Next and SUSFS
 (`piano_ksu.config`). The prebuilt repository keeps each on its own branch:
-`seventeen` without root, `seventeen-ksu` with it. Checkout the corresponding
+`6.6` without root, `6.6-ksu` with it. Checkout the corresponding
 branch in `PREBUILT_KERNEL_DIR` before building: the script refuses a mismatch
 in a Git checkout so one variant cannot overwrite the other's release.
 
