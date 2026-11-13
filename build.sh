@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -eo pipefail
 
 # Builds the alxp kernel for the Xiaomi Pad 8 Pro (piano) and lays the result
 # out as device/xiaomi/piano-kernel: Image, dtb/, dtbo.img, kernel-headers/
@@ -361,7 +361,8 @@ safe_copy() {
         echo "   [sync] $(basename "$1")"
         cp -f "$1" "$2"
     else
-        echo "   [WARN] missing $1"
+        echo "   [error] missing $1" >&2
+        exit 1
     fi
 }
 
